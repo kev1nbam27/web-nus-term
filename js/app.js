@@ -3,7 +3,7 @@
 const bleNusServiceUUID  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
 const bleNusCharRXUUID   = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
 const bleNusCharTXUUID   = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-const MTU = 20;
+const MTU = 40;
 
 var bleDevice;
 var bleServer;
@@ -12,6 +12,7 @@ var rxCharacteristic;
 var txCharacteristic;
 
 var connected = false;
+var inputString = "";
 
 function connectionToggle() {
     if (connected) {
@@ -132,31 +133,33 @@ function handleNotifications(event) {
     window.term_.io.print(str);
 }
 
+function keyboardInput(key) {
+    // If the ENTER key and BACKSPACE key were not pressed.
+    if ((key.charCodeAt(0) != 13) && (key.charCodeAt(0) != 8)) {
+        // Ignore not printable characters.
+        if (key.length == 1){
+            window.termInput_.io.print(key);
+            inputString += key;
+        }
+    } else if (key.charCodeAt(0) != 8){
+        window.term_.io.println(inputString);
+        inputString += "\n";
+        nusSendString(inputString);
+        inputString = "";
+        window.termInput_.reset();
+    }
+
+}
+
 function nusSendString(s) {
     if(bleDevice && bleDevice.gatt.connected) {
         console.log("send: " + s);
-        let val_arr = new Uint8Array(s.length)
-        for (let i = 0; i < s.length; i++) {
-            let val = s[i].charCodeAt(0);
-            val_arr[i] = val;
-        }
-        sendNextChunk(val_arr);
+        var enc = new TextEncoder(); // always utf-8
+        rxCharacteristic.writeValue(enc.encode(s));
     } else {
         window.term_.io.println('Not connected to a device yet.');
     }
 }
-
-function sendNextChunk(a) {
-    let chunk = a.slice(0, MTU);
-    rxCharacteristic.writeValue(chunk)
-      .then(function() {
-          if (a.length > MTU) {
-              sendNextChunk(a.slice(MTU));
-          }
-      });
-}
-
-
 
 function initContent(io) {
     io.println("\r\n\
@@ -172,19 +175,31 @@ This is a Web Command Line Interface via NUS (Nordic UART Service) using Web Blu
 
 function setupHterm() {
     const term = new hterm.Terminal();
+    const termInput = new hterm.Terminal();
 
     term.onTerminalReady = function() {
         const io = this.io.push();
-        io.onVTKeystroke = (string) => {
-            nusSendString(string);
-        };
+        //io.onVTKeystroke = (string) => {
+        //    keyboardInput(string);
+        //};
         io.sendString = nusSendString;
         initContent(io);
         this.setCursorVisible(true);
         this.keyboard.characterEncoding = 'raw';
     };
     term.decorate(document.querySelector('#terminal'));
-    term.installKeyboard();
+    //term.installKeyboard();
+    termInput.onTerminalReady = function() {
+        const ioInp = this.io.push();
+        ioInp.onVTKeystroke = (string) => {
+            keyboardInput(string);
+        };
+        ioInp.sendString = nusSendString;
+        this.setCursorVisible(true);
+        this.keyboard.characterEncoding = 'raw';
+    };
+    termInput.decorate(document.querySelector('#terminalInput'));
+    termInput.installKeyboard();
 
     term.contextMenu.setItems([
         ['Terminal Reset', () => {term.reset(); initContent(window.term_.io);}],
@@ -195,8 +210,11 @@ function setupHterm() {
         }],
     ]);
 
+    termInput.clearHome();
+
     // Useful for console debugging.
     window.term_ = term;
+    window.termInput_ = termInput;
 }
 
 window.onload = function() {
