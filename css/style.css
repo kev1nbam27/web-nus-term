@@ -15,10 +15,16 @@ body {
   display: block;
   position: fixed;
   top: 80px;
+  bottom: 25%;
+  width: 100%;
+}
+#terminalInput {
+  display: block;
+  position: fixed;
+  top: 80%;
   bottom: 5%;
   width: 100%;
 }
-
 #connection-panel {
   background: transparent;
 }
